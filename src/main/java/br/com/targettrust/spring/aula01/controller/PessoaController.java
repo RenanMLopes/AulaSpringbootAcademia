@@ -4,6 +4,13 @@ import br.com.targettrust.spring.aula01.dto.AssociarExericioRequest;
 import br.com.targettrust.spring.aula01.model.Endereco;
 import br.com.targettrust.spring.aula01.model.Exercicio;
 import br.com.targettrust.spring.aula01.model.Pessoa;
+import br.com.targettrust.spring.aula01.service.PessoaService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -13,94 +20,81 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 //identifica a classe como controller
 @RestController
 //diz qual é o caminho - exemplo: http://localhost:8080/pessoas
 @RequestMapping(path = "/pessoas")
+//notação para log.info
+@Slf4j
+//Cria um construtor para as propriedades final
+@RequiredArgsConstructor
 //padrao de projeto SINGLETON
 public class PessoaController {
-    private List<Endereco> enderecos = List.of(
-                new Endereco("Leandro bispo de oliveira", 178),
-                new Endereco("Maria aparecida zago", 117)
 
-    );
-    private List<Pessoa> pessoas = new ArrayList<>(
-            List.of(
-                    new Pessoa(1, "Renan Lopes", "12345678901", LocalDate.now().minus(28, ChronoUnit.YEARS),enderecos),
-                    new Pessoa(2, "Leticia Egle", "12345678901", LocalDate.now().minus(26, ChronoUnit.YEARS),enderecos),
-                    new Pessoa(3, "Adriana Lopes", "12345678901", LocalDate.now().minus(50, ChronoUnit.YEARS),enderecos)
 
-            )
-    );
+    //injeção de dependência por construtor, é a mais recomendada por conta de testes - a outra forma seria através do @AutoWired
+    private final PessoaService pessoaService;
+
+
     //jackson para json transforma o json enviado em Pessoa por conta do @RequestBody
     @PostMapping()
     //Altera o status padrao 200 para 201, que significa objeto criado
     @ResponseStatus(HttpStatus.CREATED)
     //metodo para criar uma pessoa nova
     public Pessoa criarPessoa(@RequestBody Pessoa pessoa){
-        pessoa.setId(pessoas.size() + 1);
-        pessoas.add(pessoa);
-        return pessoa;
+        return pessoaService.criarPessoa(pessoa);
     }
 
     @GetMapping
-    public List<Pessoa> listarPessoas() {
-        return pessoas;
+    public List<Pessoa> listarPessoas(
+            @RequestParam(name = "nome", required = false) String nome,
+            @RequestParam(name = "idade", required = false) Integer idade
+    )
+    {
+        return pessoaService.listarPessoas(nome);
     }
+
     @GetMapping("/{id}")
     public ResponseEntity<Pessoa> findById(@PathVariable(name = "id") Integer id){
-        int index = localzarPessoa(id);
-        if (index!= -1){
-            return ResponseEntity.ok(pessoas.get(index));
-        }else{
-            return ResponseEntity.notFound().build();
-        }
+        return pessoaService.findById(id)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
     // metodo para editar a pessoa pelo id
     @PutMapping(path = "/{id}")
     public ResponseEntity<Pessoa> editarPessoa(@PathVariable(name = "id") Integer id, @RequestBody Pessoa pessoa){
-        int posicao= localzarPessoa(id);
-        if (posicao != -1) {
-            pessoa.setId(id);
-            pessoas.set(posicao, pessoa);
-            return ResponseEntity.ok(pessoa);
-        }else{
-           return ResponseEntity.notFound().build();
-        }
-
+       return pessoaService.editarPessoa(id, pessoa)
+               .map(ResponseEntity::ok)
+               .orElse(ResponseEntity.notFound().build());
     }
 
-    //metodo para localizar a pessoa pelo d
-    private int localzarPessoa(Integer id) {
-        for(int index = 0; index < pessoas.size(); index++){
-            Pessoa searchPessoa = pessoas.get(index);
-            if(id.equals(searchPessoa.getId())) {
-               return index;
-            }
-        }
-        return -1;
+    @PatchMapping
+    public ResponseEntity<Pessoa> editarPessoaParcial(@PathVariable(name = "id") Integer id, @RequestBody Pessoa pessoa){
+          return   pessoaService.editarParcial(id, pessoa)
+                    .map(ResponseEntity::ok)
+                    .orElse(ResponseEntity.notFound().build());
     }
+
+
 
     // metodo para deletar pessoa do banco pelo id
     @DeleteMapping(path = "/{id}")
-    public ResponseEntity deletarPessoa(@PathVariable(name = "id") Integer id){
-        int posicao = localzarPessoa(id);
-        if (posicao != -1) {
-            pessoas.remove(posicao);
-            return ResponseEntity.ok().build();
-        }else{
-            return ResponseEntity.notFound().build();
-        }
+    public void deletarPessoa(@PathVariable(name = "id") Integer id){
+        pessoaService.deletarPessoa(id);
     }
 
     //metodo para associar exercicio a uma pessoa pelo id
     @PostMapping(path = "/{id}/exercicios")
     public void associarExercicios(
             @PathVariable ("id") Integer idPessoa,
-            @RequestBody AssociarExericioRequest associarExericioRequest){
+            @RequestBody @Valid AssociarExericioRequest associarExericioRequest){
+            log.info("Associar exercicio para pessoa de id: " + idPessoa);
+            log.info(associarExericioRequest.getExercicios().stream()
+                .map(Object::toString)
+                .collect(Collectors.joining(",")));
     }
-
     //metodo para listar os exericios da pessoa
     @GetMapping(path = "/{id}/exercicios")
     public List<Exercicio> listarExercicios(
